@@ -14,7 +14,6 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from '../../common/guard/jwt-auth.guard';
-import { JwtRefreshGuard } from '../../common/guard/jwt-refresh.guard';
 import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/guard/roles.guard';
 

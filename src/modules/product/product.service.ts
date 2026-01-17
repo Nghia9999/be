@@ -30,7 +30,7 @@ export class ProductService {
     return created;
   }
 
-  async findAll(category?: string, limit = 50, skip = 0) {
+  async findAll(category?: string, limit = 50, skip = 0, search?: string) {
     const filter: any = {};
 
     if (category && Types.ObjectId.isValid(category)) {
@@ -70,6 +70,14 @@ export class ProductService {
       filter.category = category;
     }
 
+    // Add search functionality
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
     const pipeline: any[] = [
       { $match: filter },
       { $sort: { createdAt: -1 } },
@@ -107,6 +115,55 @@ export class ProductService {
     ];
 
     return this.productModel.aggregate(pipeline);
+  }
+
+  async count(category?: string, search?: string): Promise<number> {
+    const filter: any = {};
+
+    if (category && Types.ObjectId.isValid(category)) {
+      const cat = await this.categoryModel.findById(category).lean();
+      if (cat) {
+        // If this is a parent category, include all descendant categories.
+        if ((cat as any).isLeaf === false) {
+          const ids: string[] = [category];
+          const queue: string[] = [category];
+
+          while (queue.length) {
+            const parentId = queue.shift() as string;
+            const children = await this.categoryModel
+              .find({ parent: parentId })
+              .select('_id')
+              .lean();
+
+            for (const child of children) {
+              const id = (child as any)._id?.toString();
+              if (id && !ids.includes(id)) {
+                ids.push(id);
+                queue.push(id);
+              }
+            }
+          }
+
+          filter.category = { $in: ids };
+        } else {
+          filter.category = category;
+        }
+      } else {
+        filter.category = category;
+      }
+    } else if (category) {
+      filter.category = category;
+    }
+
+    // Add search functionality
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    return this.productModel.countDocuments(filter);
   }
 
   async findOne(id: string) {

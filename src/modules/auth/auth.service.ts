@@ -19,7 +19,11 @@ export class AuthService {
     const created = await this.userModel.create({ ...dto, password: hashed });
     const payload = { sub: created._id, role: created.role };
     const tokens = this.generateTokens(payload);
-    return {
+    const exists = await this.userModel.findOne({ email: dto.email });
+    if (exists) {
+      throw new UnauthorizedException('Email already exists');
+    }else{
+      return {
       ...tokens,
       user: {
         _id: created._id,
@@ -29,6 +33,7 @@ export class AuthService {
       }
     };
   }
+}
 
   async validateUser(email: string, pass: string) {
     const user = await this.userModel.findOne({ email }).select('+password');

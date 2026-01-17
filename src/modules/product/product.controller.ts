@@ -69,8 +69,18 @@ export class ProductController {
     @Query('category') category?: string,
     @Query('limit') limit: number = 50,
     @Query('skip') skip: number = 0,
+    @Query('search') search?: string,
   ) {
-    return this.productService.findAll(category, limit, skip);
+    return this.productService.findAll(category, limit, skip, search);
+  }
+
+  @Get('count')
+  async count(
+    @Query('category') category?: string,
+    @Query('search') search?: string,
+  ) {
+    const count = await this.productService.count(category, search);
+    return { count };
   }
 
   @Get(':id')

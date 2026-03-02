@@ -8,8 +8,6 @@ import { UserModule } from './modules/user/user.module';
 import { OrderModule } from './modules/order/order.module';
 import { RatingModule } from './modules/rating/rating.module';
 import { ProductModule } from './modules/product/product.module';
-import { TrackingModule } from './modules/tracking/tracking.module';
-import { RecommendationsModule } from './modules/recommendations/recommendations.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
@@ -33,8 +31,7 @@ import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
     OrderModule,
     RatingModule,
     ProductModule,
-    TrackingModule,
-    RecommendationsModule,
+    
   ],
   controllers: [AppController],
   providers: [AppService],

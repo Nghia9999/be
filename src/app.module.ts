@@ -18,10 +18,17 @@ import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        uri: config.get<string>('MONGODB_URI') || process.env.MONGODB_URI,
-        // you can add mongoose options here if needed
-      }),
+      useFactory: (config: ConfigService) => {
+        const uri = config.get<string>('MONGODB_URI') || process.env.MONGODB_URI;
+        if (!uri) {
+          console.warn('⚠️ Warning: MONGODB_URI not set. Using default connection.');
+        }
+        return {
+          uri: uri || 'mongodb://localhost:27017/ecommerce',
+          retryAttempts: 5,
+          retryDelay: 3000,
+        };
+      },
     }),
     CloudinaryModule,
     AuthModule,

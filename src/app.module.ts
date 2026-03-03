@@ -11,6 +11,7 @@ import { ProductModule } from './modules/product/product.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
+import { PaymentModule } from './modules/payment/payment.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
       },
     }),
     CloudinaryModule,
+    PaymentModule,
     AuthModule,
     CartModule,
     CategoryModule,

@@ -9,15 +9,29 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
     
     // Middleware for Stripe webhook (must be before other body parsers)
-    app.use('/api/payment/webhook', bodyParser.raw({ type: 'application/json' }));
+    app.use('/payment/webhook', bodyParser.raw({ type: 'application/json' }));
     
     app.use(cookieParser());
     app.use(bodyParser.json());
     app.use(bodyParser.urlencoded({ extended: true }));
     
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    const frontendUrlsRaw = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const allowedOrigins = Array.from(
+      new Set(
+        frontendUrlsRaw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => s.replace(/\/+$/, '')),
+      ),
+    );
+    if (!allowedOrigins.includes('http://localhost:3000')) {
+      allowedOrigins.push('http://localhost:3000');
+    }
+
     app.enableCors({
-      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      origin: allowedOrigins,
       credentials: true,
       methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'stripe-signature'],

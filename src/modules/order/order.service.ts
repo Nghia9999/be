@@ -28,6 +28,8 @@ export interface Order {
   totalAmount: number;
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   paymentStatus: 'pending' | 'paid' | 'failed';
+  stripeSessionId?: string;
+  stripePaymentIntentId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,9 +42,12 @@ export class OrderService {
     const orderNumber = `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`;
     const order = new this.orderModel({
       ...createOrderDto,
+      stripeSessionId:
+        (createOrderDto as any).stripeSessionId ??
+        (createOrderDto as any).stripSessionId,
       orderNumber,
-      status: 'pending',
-      paymentStatus: 'pending',
+      status: createOrderDto.status ?? 'pending',
+      paymentStatus: createOrderDto.paymentStatus ?? 'pending',
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -64,6 +69,16 @@ export class OrderService {
     return this.orderModel
       .find({ userId })
       .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  async findByStripeSessionId(sessionId: string): Promise<Order | null> {
+    return this.orderModel.findOne({ stripeSessionId: sessionId }).exec();
+  }
+
+  async findByStripePaymentIntentId(paymentIntentId: string): Promise<Order | null> {
+    return this.orderModel
+      .findOne({ stripePaymentIntentId: paymentIntentId })
       .exec();
   }
 

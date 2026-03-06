@@ -1,11 +1,12 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   Headers,
   Req,
   BadRequestException,
-  OnModuleInit,
+  Param,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ConfigService } from '@nestjs/config';
@@ -13,23 +14,24 @@ import Stripe from 'stripe';
 import { PaymentService } from './payment.service';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
+import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { ConfirmCheckoutSessionDto } from './dto/confirm-checkout-session.dto';
 
 @Controller('payment')
-export class PaymentController implements OnModuleInit {
+export class PaymentController {
   private stripe: Stripe;
 
   constructor(
     private paymentService: PaymentService,
     private configService: ConfigService,
-  ) {}
-
-  onModuleInit() {
+  ) {
     const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
-    if (secretKey) {
-      this.stripe = new Stripe(secretKey, {
-        apiVersion: '2025-12-15.clover',
-      });
+    if (!secretKey) {
+      throw new Error('STRIPE_SECRET_KEY is not configured');
     }
+    this.stripe = new Stripe(secretKey, {
+      apiVersion: '2025-12-15.clover',
+    });
   }
 
   @Post('create-payment-intent')
@@ -42,23 +44,62 @@ export class PaymentController implements OnModuleInit {
     return await this.paymentService.confirmPayment(dto);
   }
 
+  @Post('create-checkout-session')
+  async createCheckoutSession(@Body() dto: CreateCheckoutSessionDto) {
+    return await this.paymentService.createCheckoutSession(dto);
+  }
+
+  @Get('checkout-session/:sessionId')
+  async getCheckoutSessionOrder(@Param('sessionId') sessionId: string) {
+    return await this.paymentService.getOrderByCheckoutSession(sessionId);
+  }
+
+  @Post('confirm-checkout-session')
+  async confirmCheckoutSession(@Body() dto: ConfirmCheckoutSessionDto) {
+    return await this.paymentService.confirmCheckoutSession(dto);
+  }
+
   @Post('webhook')
   async handleWebhook(
     @Req() req: Request,
     @Headers('stripe-signature') signature: string,
   ) {
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+    const webhookSecretRaw = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
     
-    if (!webhookSecret) {
+    if (!webhookSecretRaw) {
       throw new BadRequestException('Webhook secret is not configured');
+    }
+    if (!signature) {
+      throw new BadRequestException('Missing stripe-signature header');
     }
 
     try {
-      const event = this.stripe.webhooks.constructEvent(
-        (req as any).rawBody,
-        signature,
-        webhookSecret,
-      );
+      const rawBody = req.body;
+      if (!rawBody || !(rawBody instanceof Buffer)) {
+        throw new BadRequestException('Invalid webhook payload (raw body missing)');
+      }
+
+      const secrets = webhookSecretRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      let lastErr: any = null;
+      let event: Stripe.Event | null = null;
+
+      for (const secret of secrets) {
+        try {
+          event = this.stripe.webhooks.constructEvent(rawBody, signature, secret);
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+
+      if (!event) {
+        throw lastErr || new Error('Webhook signature verification failed');
+      }
 
       return await this.paymentService.handleWebhook(event);
     } catch (error) {

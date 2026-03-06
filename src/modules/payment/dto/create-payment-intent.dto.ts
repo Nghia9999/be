@@ -2,6 +2,7 @@ import { IsNumber, IsString, IsOptional, IsArray, ValidateNested } from 'class-v
 import { Type } from 'class-transformer';
 
 export class CartItemDto {
+  @IsOptional()
   @IsString()
   id?: string;
 

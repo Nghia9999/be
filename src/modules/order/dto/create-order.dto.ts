@@ -91,6 +91,11 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
+  stripeSessionId?: string;
+
+  // Backward-compat (typo). Prefer `stripeSessionId`.
+  @IsOptional()
+  @IsString()
   stripSessionId?: string;
 }
 

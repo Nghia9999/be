@@ -1,40 +1,50 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
-  Param, 
-  Delete, 
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
   UseGuards,
-  Request 
+  Request,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
+import { JwtAuthGuard } from '../../common/guard/jwt-auth.guard';
+import { RolesGuard } from '../../common/guard/roles.guard';
+import { Roles } from '../../common/roles.decorator';
 
+@UseGuards(JwtAuthGuard)
 @Controller('orders') // Changed to plural
 export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
   create(@Body() createOrderDto: CreateOrderDto, @Request() req) {
-    // Add userId from authenticated user if available
+    if (!req.user?.sub) {
+      throw new UnauthorizedException('Bạn cần đăng nhập để tạo đơn hàng');
+    }
+
     return this.orderService.create({
       ...createOrderDto,
-      userId: req.user?.sub || 'anonymous',
+      userId: req.user.sub,
     });
   }
 
   @Get()
   getUserOrders(@Request() req) {
-    if (req.user?.sub) {
-      return this.orderService.findByUserId(req.user.sub);
+    if (!req.user?.sub) {
+      throw new UnauthorizedException('Bạn cần đăng nhập để xem lịch sử đơn hàng');
     }
-    return this.orderService.findAll();
+    return this.orderService.findByUserId(req.user.sub);
   }
 
   @Get('admin/all')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   findAll() {
     return this.orderService.findAll();
   }

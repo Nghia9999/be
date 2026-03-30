@@ -19,20 +19,6 @@ export class WebhookController {
     try {
       const sig = headers['stripe-signature'];
       
-      // TODO: Verify webhook signature after installing stripe package
-      // const event = this.stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-
-      // TODO: Handle different event types
-      // switch (event.type) {
-      //   case 'payment_intent.succeeded':
-      //     await this.handlePaymentSucceeded(event.data.object);
-      //     break;
-      //   case 'payment_intent.payment_failed':
-      //     await this.handlePaymentFailed(event.data.object);
-      //     break;
-      //   default:
-      //     console.log(`Unhandled event type: ${event.type}`);
-      // }
 
       return { received: true };
     } catch (error) {
@@ -41,14 +27,5 @@ export class WebhookController {
     }
   }
 
-  // TODO: Implement these methods after installing stripe package
-  // private async handlePaymentSucceeded(paymentIntent: any) {
-  //   // Create order in database
-  //   // Update order status to 'processing'
-  // }
-
-  // private async handlePaymentFailed(paymentIntent: any) {
-  //   // Update order status to 'cancelled'
-  //   // Send notification to customer
-  // }
+  
 }

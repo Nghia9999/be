@@ -4,14 +4,20 @@ import { CartItemDto } from './create-payment-intent.dto';
 import { CustomerInfoDto } from './confirm-payment.dto';
 
 export class CreateCheckoutSessionDto {
+  @IsOptional()
+  @IsString()
+  orderId?: string;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CartItemDto)
-  items: CartItemDto[];
+  items?: CartItemDto[];
 
+  @IsOptional()
   @ValidateNested()
   @Type(() => CustomerInfoDto)
-  customerInfo: CustomerInfoDto;
+  customerInfo?: CustomerInfoDto;
 
   @IsOptional()
   @IsString()

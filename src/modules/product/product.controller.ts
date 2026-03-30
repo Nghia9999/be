@@ -12,7 +12,6 @@ import {
   Query,
   UploadedFiles,
   UseInterceptors,
-  BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ProductService } from './product.service';

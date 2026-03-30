@@ -7,15 +7,16 @@ import {
   Req,
   BadRequestException,
   Param,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request as ExpressRequest } from 'express';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PaymentService } from './payment.service';
-import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
-import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { ConfirmCheckoutSessionDto } from './dto/confirm-checkout-session.dto';
+import { JwtAuthGuard } from '../../common/guard/jwt-auth.guard';
 
 @Controller('payment')
 export class PaymentController {
@@ -34,19 +35,11 @@ export class PaymentController {
     });
   }
 
-  @Post('create-payment-intent')
-  async createPaymentIntent(@Body() dto: CreatePaymentIntentDto) {
-    return await this.paymentService.createPaymentIntent(dto);
-  }
-
-  @Post('confirm-payment')
-  async confirmPayment(@Body() dto: ConfirmPaymentDto) {
-    return await this.paymentService.confirmPayment(dto);
-  }
-
   @Post('create-checkout-session')
-  async createCheckoutSession(@Body() dto: CreateCheckoutSessionDto) {
-    return await this.paymentService.createCheckoutSession(dto);
+  @UseGuards(JwtAuthGuard)
+  async createCheckoutSession(@Body() dto: CreateCheckoutSessionDto, @Request() req: { user?: { id?: string; sub?: string } }) {
+    const userId = req.user?.id ?? req.user?.sub;
+    return await this.paymentService.createCheckoutSession(dto, userId);
   }
 
   @Get('checkout-session/:sessionId')
@@ -61,7 +54,7 @@ export class PaymentController {
 
   @Post('webhook')
   async handleWebhook(
-    @Req() req: Request,
+    @Req() req: ExpressRequest,
     @Headers('stripe-signature') signature: string,
   ) {
     const webhookSecretRaw = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');

@@ -23,23 +23,24 @@ export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
-  create(@Body() createOrderDto: CreateOrderDto, @Request() req) {
-    if (!req.user?.sub) {
+  create(@Body() createOrderDto: CreateOrderDto, @Request() req: { user?: { id: string } }) {
+    const userId = req.user?.id ?? (req.user as any)?.sub;
+    if (!userId) {
       throw new UnauthorizedException('Bạn cần đăng nhập để tạo đơn hàng');
     }
-
     return this.orderService.create({
       ...createOrderDto,
-      userId: req.user.sub,
+      userId,
     });
   }
 
   @Get()
-  getUserOrders(@Request() req) {
-    if (!req.user?.sub) {
+  getUserOrders(@Request() req: { user?: { id: string } }) {
+    const userId = req.user?.id ?? (req.user as any)?.sub;
+    if (!userId) {
       throw new UnauthorizedException('Bạn cần đăng nhập để xem lịch sử đơn hàng');
     }
-    return this.orderService.findByUserId(req.user.sub);
+    return this.orderService.findByUserId(userId);
   }
 
   @Get('admin/all')
@@ -50,8 +51,15 @@ export class OrderController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.orderService.findOne(id);
+  async findOne(@Param('id') id: string, @Request() req: { user?: { id?: string; sub?: string; role?: string } }) {
+    const order = await this.orderService.findOne(id);
+    if (!order) return null;
+    const userId = req.user?.id ?? req.user?.sub;
+    const isAdmin = req.user?.role === 'admin';
+    if (!isAdmin && order.userId !== userId) {
+      throw new UnauthorizedException('Bạn không có quyền xem đơn hàng này');
+    }
+    return order;
   }
 
   @Patch(':id/status')
@@ -71,7 +79,14 @@ export class OrderController {
   }
 
   @Post(':id/cancel')
-  cancel(@Param('id') id: string) {
+  async cancel(@Param('id') id: string, @Request() req: { user?: { id?: string; sub?: string; role?: string } }) {
+    const order = await this.orderService.findOne(id);
+    if (!order) throw new UnauthorizedException('Đơn hàng không tồn tại');
+    const userId = req.user?.id ?? req.user?.sub;
+    const isAdmin = req.user?.role === 'admin';
+    if (!isAdmin && order.userId !== userId) {
+      throw new UnauthorizedException('Bạn không có quyền hủy đơn hàng này');
+    }
     return this.orderService.cancel(id);
   }
 

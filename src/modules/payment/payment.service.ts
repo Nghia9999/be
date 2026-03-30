@@ -3,8 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { CartService } from '../cart/cart.service';
 import { OrderService } from '../order/order.service';
-import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
-import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { CreateOrderDto } from '../order/dto/create-order.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { ConfirmCheckoutSessionDto } from './dto/confirm-checkout-session.dto';
@@ -67,139 +65,70 @@ export class PaymentService {
     return this.isZeroDecimalCurrency(currency) ? amount : amount / 100;
   }
 
-  async createPaymentIntent(dto: CreatePaymentIntentDto) {
-    try {
-      const currency = this.normalizeCurrency(dto.currency);
-      const stripeAmount = this.toStripeAmount(dto.amount, currency);
-
-      const paymentIntent = await this.stripe.paymentIntents.create({
-        amount: stripeAmount,
-        currency,
-        automatic_payment_methods: {
-          enabled: true,
-          allow_redirects: 'never',
-        },
-        metadata: {
-          userId: dto.userId || 'guest',
-          sessionId: dto.sessionId || '',
-          itemCount: dto.items.length.toString(),
-        },
-      });
-
-      return {
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id,
-        amount: dto.amount,
-        currency,
-      };
-    } catch (error) {
-      if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException(`Failed to create payment intent: ${error.message}`);
-    }
-  }
-
-  async confirmPayment(dto: ConfirmPaymentDto) {
-    try {
-      // Retrieve the payment intent from Stripe
-      const paymentIntent = await this.stripe.paymentIntents.retrieve(dto.paymentIntentId);
-
-      if (paymentIntent.status !== 'succeeded') {
-        throw new BadRequestException(
-          `Payment failed with status: ${paymentIntent.status}`,
-        );
-      }
-
-      const currency = this.normalizeCurrency(paymentIntent.currency);
-      const cartItems = await this.cartService.findBySessionOrUser(
-        dto.sessionId,
-        dto.userId,
-      );
-
-      if (!cartItems || cartItems.length === 0) {
-        throw new BadRequestException('Cart is empty. Cannot create order.');
-      }
-
-      // Create order in database
-      const orderData: CreateOrderDto = {
-        userId: dto.userId ?? undefined,
-        items: cartItems.map((item) => ({
-          id: item.productId,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          image: item.image,
-          size: item.size,
-          color: item.color,
-        })),
-        customerInfo: dto.customerInfo,
-        totalAmount: this.fromStripeAmount(paymentIntent.amount, currency),
-        paymentStatus: 'paid',
-        status: 'pending',
-        stripePaymentIntentId: paymentIntent.id,
-      };
-
-      const order = await this.orderService.create(orderData);
-
-      // Clear the cart after successful payment
-      if (dto.userId) {
-        await this.cartService.clearUser(dto.userId);
-      } else if (dto.sessionId) {
-        await this.cartService.clearSession(dto.sessionId);
-      }
-
-      return {
-        success: true,
-        message: 'Payment confirmed and order created',
-        orderId: order._id,
-        orderNumber: order.orderNumber,
-      };
-    } catch (error) {
-      if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException(`Payment confirmation failed: ${error.message}`);
-    }
-  }
-
-  async createCheckoutSession(dto: CreateCheckoutSessionDto) {
+  async createCheckoutSession(dto: CreateCheckoutSessionDto, userId?: string) {
     const currency = this.normalizeCurrency(dto.currency);
-    const items = dto.items || [];
+    const orderUserId = userId ?? dto.userId ?? undefined;
 
-    if (!items.length) {
-      throw new BadRequestException('Cart is empty');
-    }
+    let items: Array<{ productId?: string; name: string; price: number; quantity: number; image?: string; size?: string; color?: string }>;
+    let customerInfo: CreateCheckoutSessionDto['customerInfo'];
+    let existingOrder: Awaited<ReturnType<typeof this.orderService.findOne>> = null;
+    let totalAmount: number;
 
-    const frontendEnv = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-    // If multiple origins are configured, use the first one as base URL for redirects.
-    const frontendBase = (frontendEnv.split(',')[0] || 'http://localhost:3000')
-      .trim()
-      .replace(/\/+$/, '');
-
-    const totalAmount = items.reduce((sum, item) => {
-      const price = typeof item?.price === 'number' ? item.price : 0;
-      const quantity = typeof item?.quantity === 'number' ? item.quantity : 1;
-      return sum + price * quantity;
-    }, 0);
-
-    if (totalAmount <= 0) {
-      throw new BadRequestException('Total amount must be greater than 0');
-    }
-
-    // Create an order first (pending). Webhook will mark as paid.
-    const order = await this.orderService.create({
-      userId: dto.userId ?? undefined,
-      items: items.map((i) => ({
-        id: i.productId,
+    if (dto.orderId && orderUserId) {
+      existingOrder = await this.orderService.findOne(dto.orderId);
+      if (!existingOrder) throw new BadRequestException('Đơn hàng không tồn tại');
+      if (existingOrder.userId !== orderUserId) throw new BadRequestException('Bạn không có quyền thanh toán đơn này');
+      if (existingOrder.paymentStatus !== 'pending') throw new BadRequestException('Đơn hàng đã thanh toán hoặc không thể thanh toán');
+      items = existingOrder.items.map((i) => ({
+        productId: i.id,
         name: i.name,
         price: i.price,
         quantity: i.quantity,
         image: i.image,
         size: i.size,
         color: i.color,
-      })),
-      customerInfo: dto.customerInfo,
-      totalAmount,
-      paymentStatus: 'pending',
-      status: 'pending',
-    });
+      }));
+      customerInfo = existingOrder.customerInfo;
+      totalAmount = existingOrder.totalAmount;
+    } else {
+      items = dto.items || [];
+      if (!items.length) throw new BadRequestException('Giỏ hàng trống');
+      customerInfo = dto.customerInfo;
+      if (!customerInfo) throw new BadRequestException('Thiếu thông tin giao hàng');
+      totalAmount = items.reduce((sum, item) => {
+        const price = typeof item?.price === 'number' ? item.price : 0;
+        const quantity = typeof item?.quantity === 'number' ? item.quantity : 1;
+        return sum + price * quantity;
+      }, 0);
+    }
+
+    if (totalAmount <= 0) {
+      throw new BadRequestException('Total amount must be greater than 0');
+    }
+
+    const frontendEnv = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendBase = (frontendEnv.split(',')[0] || 'http://localhost:3000')
+      .trim()
+      .replace(/\/+$/, '');
+
+    if (!existingOrder) {
+      existingOrder = await this.orderService.create({
+        userId: orderUserId,
+        items: items.map((i) => ({
+          id: i.productId || i.name,
+          name: i.name,
+          price: i.price,
+          quantity: i.quantity,
+          image: i.image || '',
+          size: i.size,
+          color: i.color,
+        })),
+        customerInfo,
+        totalAmount,
+        paymentStatus: 'pending',
+        status: 'pending',
+      });
+    }
 
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = items.map((item) => {
       const maybeImages =
@@ -230,18 +159,18 @@ export class PaymentService {
       payment_method_types: ['card'],
       line_items: lineItems,
       success_url: `${frontendBase}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${frontendBase}/cart`,
-      customer_email: dto.customerInfo?.email,
+      cancel_url: dto.orderId ? `${frontendBase}/orders` : `${frontendBase}/cart`,
+      customer_email: customerInfo?.email,
       billing_address_collection: 'required',
       metadata: {
-        orderId: String(order._id),
-        orderNumber: order.orderNumber,
-        userId: dto.userId ? String(dto.userId) : '',
+        orderId: String(existingOrder._id),
+        orderNumber: existingOrder.orderNumber,
+        userId: orderUserId ? String(orderUserId) : '',
         sessionId: dto.sessionId ? String(dto.sessionId) : '',
       },
     });
 
-    await this.orderService.update(order._id, {
+    await this.orderService.update(existingOrder._id, {
       stripeSessionId: session.id,
       stripePaymentIntentId:
         typeof session.payment_intent === 'string' ? session.payment_intent : undefined,
@@ -250,8 +179,8 @@ export class PaymentService {
     return {
       url: session.url,
       sessionId: session.id,
-      orderId: order._id,
-      orderNumber: order.orderNumber,
+      orderId: existingOrder._id,
+      orderNumber: existingOrder.orderNumber,
     };
   }
 
